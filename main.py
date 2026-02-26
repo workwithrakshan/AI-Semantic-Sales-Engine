@@ -1,64 +1,89 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from app.database import Base, engine, SessionLocal
-from app.agent import match_service, generate_email, save_outreach, analyze_reply_and_respond
-from app.models import Outreach
+# Cleaned up imports to match the actual agent.py functions
+from app.agent import match_service, generate_email, save_outreach
+from app.models import Outreach, Service , Lead
+from app.embedding import generate_embedding
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-class LeadData(BaseModel):
+class ServiceCreate(BaseModel):
+    name: str
+    description: str
+
+class OutreachRequest(BaseModel):
     company_name: str
     company_description: str
 
-class ReplyData(BaseModel):
-    outreach_id: int
-    reply_text: str
+@app.post("/services")
+def add_service(service: ServiceCreate):
+    db = SessionLocal()
+    embedding = generate_embedding(service.description)
+    new_service = Service(
+        name=service.name,
+        description=service.description,
+        embedding=embedding
+    )
+    db.add(new_service)
+    db.commit()
+    db.refresh(new_service)
+    db.close()
+    return {"id": new_service.id, "name": new_service.name}
+
+@app.get("/services")
+def list_services():
+    try:
+        db = SessionLocal()
+        services = db.query(Service).all()
+        result = [{"id": s.id, "name": s.name, "description": s.description} for s in services]
+        db.close()
+        return result
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/generate-outreach")
-def generate_outreach(data: LeadData):
-    # 1. Analyst Agent matches service
-    service = match_service(data.company_description)
-    if not service:
-        raise HTTPException(status_code=404, detail="No matching service found in vector DB.")
+def generate_outreach(data: OutreachRequest):
+    try:
+        service = match_service(data.company_description)
+        if not service:
+            return {"error": "No service found in database. Add one via /services first."}
 
-    # 2. Pitch Agent writes email
-    email = generate_email(data.company_name, data.company_description, service)
+        email = generate_email(data.company_name, data.company_description, service)
+        saved = save_outreach(data.company_name, service.name, email)
 
-    # 3. Save to DB
-    saved = save_outreach(data.company_name, service.name, email)
+        return {
+            "outreach_id": saved.id,
+            "matched_service": service.name,
+            "email": email
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
-    return {
-        "outreach_id": saved.id,
-        "matched_service": service.name,
-        "email": email
-    }
-
-@app.post("/process-reply")
-def process_reply(data: ReplyData):
+@app.get("/all-outreach")
+def all_outreach():
     db = SessionLocal()
-    record = db.query(Outreach).filter(Outreach.id == data.outreach_id).first()
-    
-    if not record:
-        db.close()
-        raise HTTPException(status_code=404, detail="Outreach record not found.")
-
-    # 4. Closer Agent analyzes sentiment and drafts response
-    sentiment, next_email = analyze_reply_and_respond(data.reply_text)
-    
-    # Update DB state based on predictive classification
-    if sentiment.lower() == "positive":
-        record.status = "meeting_scheduled"
-    else:
-        record.status = "not_interested"
-        
-    record.followup_content = next_email
-    db.commit()
+    records = db.query(Outreach).all()
     db.close()
+    return records
 
-    return {
-        "sentiment_detected": sentiment,
-        "generated_response": next_email,
-        "new_status": record.status
-    }
+@app.get("/leads")
+def get_all_leads():
+    db = SessionLocal()
+    try:
+        leads = db.query(Lead).all()
+        result = []
+        for lead in leads:
+            result.append({
+                "id": lead.id,
+                "company_name": lead.company_name,
+                "website": lead.website_url,
+                "scraped_bio": lead.company_description,
+                "email": lead.contact_email,
+                "is_pitched": lead.is_pitched
+            })
+        return result
+    finally:
+        db.close()

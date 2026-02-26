@@ -1,77 +1,125 @@
+import sys
 import os
-import google.generativeai as genai
+import requests
+
+# 🛠️ Fixes the path so 'app' module can be found from the project root
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from app.database import SessionLocal
-from app.models import Service, Outreach
-from app.embedding import generate_embedding
+from app.models import Service, Outreach, Lead
+from dotenv import load_dotenv
 
-# Initialize Gemini
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-2.5-pro')
+load_dotenv()
 
-def match_service(company_description: str):
-    """The Analyst Agent: Finds the best IT service to pitch."""
-    db = SessionLocal()
-    query_embedding = generate_embedding(company_description)
+# AnythingLLM configuration
+ANYTHINGLLM_URL = "http://192.168.1.38:3001/api/v1"
+ANYTHINGLLM_TOKEN = os.getenv("ANYTHINGLLM_TOKEN", "21Y0K2Q-DEDM82D-GRBGH34-W8GGAQX")
+
+def call_local_llm(prompt: str, company_name: str) -> str:
+    """Calls local LLM, prints clean output to terminal, and saves a .txt file."""
+    headers = {
+        "Authorization": f"Bearer {ANYTHINGLLM_TOKEN}",
+        "Content-Type": "application/json",
+        "accept": "application/json"
+    }
+    payload = {"message": prompt, "mode": "chat"}
     
-    # Cosine distance search using pgvector
-    best_match = db.query(Service).order_by(
-        Service.embedding.cosine_distance(query_embedding)
-    ).first()
-    db.close()
-    return best_match
+    try:
+        # High timeout (90s) for high-quality 300-word generations
+        response = requests.post(
+            f"{ANYTHINGLLM_URL}/workspace/my-workspace/chat",
+            headers=headers,
+            json=payload,
+            timeout=90000 
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            text = data.get("textResponse", data.get("response", ""))
+            
+            # Clean up <think> tags if the model uses reasoning/CoT
+            if '<think>' in text:
+                text = text.split('</think>')[-1].strip()
+            
+            # --- 🖥️ TERMINAL OUTPUT (Solves the \n issue) ---
+            print("\n" + "📧 " + "="*60)
+            print(f"STRATEGIC PITCH FOR: {company_name}")
+            print("-" * 60)
+            print(text) 
+            print("="*60 + "\n")
+
+            # --- 💾 SAVE TO TEXT FILE ---
+            # Remove special characters from filename for OS safety
+            safe_name = "".join(x for x in company_name if x.isalnum())
+            file_path = f"pitch_{safe_name}.txt"
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(text)
+            print(f"✅ Draft saved to: {file_path}")
+
+            return text
+        else:
+            return f"Error: {response.status_code}"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 def generate_email(company_name: str, company_description: str, service) -> str:
-    """The Pitch Agent: Writes the personalized cold email."""
+    """Generates the professional pitch using the Senior Architect persona."""
     prompt = f"""
-    You are an expert IT Business Development Executive. 
-    Write a highly personalized, concise cold email to {company_name}.
-    Company Context: {company_description}
-    The service we are pitching: {service.name} - {service.description}
-    
-    Keep it under 150 words. Focus on their specific pain points. End with a soft call to action for a quick chat.
-    """
-    response = model.generate_content(prompt)
-    return response.text
+### INSTRUCTIONS:
+You are a Senior IT Solutions Architect. Write a sophisticated, professional outreach email to {company_name}.
 
-def save_outreach(company_name: str, service_name: str, email: str):
-    """Helper to save to DB."""
+### DATA CONTEXT:
+Target Company Bio: {company_description}
+Our Service: {service.name} - {service.description}
+
+### EMAIL STRUCTURE (STRICT):
+1. Professional Subject Line.
+2. Hook: Reference a specific technical/business detail from their bio.
+3. Gap & Solution: Why they need {service.name} based on their current operations.
+4. CTA: 10-minute introduction call.
+
+### FORMATTING:
+- Length: 200 to 300 words.
+- Tone: Executive and consultative.
+- Output ONLY the email content. No conversational filler.
+"""
+    return call_local_llm(prompt, company_name)
+
+if __name__ == "__main__":
+    print("🧠 ANALYST AGENT STARTING...")
     db = SessionLocal()
-    new_outreach = Outreach(
-        company_name=company_name,
-        matched_service=service_name,
-        email_content=email
-    )
-    db.add(new_outreach)
-    db.commit()
-    db.refresh(new_outreach)
-    db.close()
-    return new_outreach
+    
+    try:
+        # 🎯 STEP 1: Get leads with emails that have NOT been pitched yet
+        leads = db.query(Lead).filter(
+            Lead.contact_email != "discovery@pending.com",
+            Lead.contact_email != "not_found@company.com",
+            Lead.is_pitched == False  # This ensures we don't repeat work
+        ).all()
 
-def analyze_reply_and_respond(reply_text: str):
-    """The Closer Agent: Analyzes sentiment and handles scheduling."""
-    prompt = f"""
-    You are an AI Sales Closer. Read the following email reply from a prospect:
-    "{reply_text}"
-    
-    Task 1: Determine the sentiment. Is it 'Positive' (they want to talk/know more) or 'Negative' (not interested/stop)?
-    Task 2: If Positive, write a short, polite response proposing a Google Meet and include the placeholder link [INSERT_GMEET_LINK].
-    Task 3: If Negative, write a very brief, polite sign-off acknowledging their pass.
-    
-    Format your response EXACTLY like this:
-    SENTIMENT: [Positive/Negative]
-    RESPONSE: [Your email response]
-    """
-    response = model.generate_content(prompt)
-    
-    # Simple parser to extract the agent's decisions
-    lines = response.text.split('\n')
-    sentiment = "Negative"
-    email_response = ""
-    
-    for line in lines:
-        if line.startswith("SENTIMENT:"):
-            sentiment = line.split(":")[1].strip()
-        elif line.startswith("RESPONSE:"):
-            email_response = line.split(":", 1)[1].strip()
+        # 🎯 STEP 2: Fetch your business service details
+        service = db.query(Service).first()
+        
+        if not leads:
+            print("✨ All leads have been processed! No new emails to generate.")
+        elif not service:
+            print("❌ No service found. Please add your service details in Swagger (POST /services).")
+        else:
+            print(f"🎯 Found {len(leads)} NEW leads. Starting AI Generations...")
+            print("-" * 30)
             
-    return sentiment, email_response
+            for lead in leads:
+                # Generate and save the email
+                result = generate_email(lead.company_name, lead.company_description, service)
+                
+                # If generation was successful, mark as pitched in database
+                if "Error" not in result:
+                    lead.is_pitched = True
+                    db.commit()
+                    print(f"✔️ {lead.company_name} marked as 'Drafted' in DB.")
+                
+    except Exception as e:
+        print(f"💥 Critical Error: {e}")
+    finally:
+        db.close()
+        print("\n🚀 Mission Complete. Check your project folder for .txt files.")
