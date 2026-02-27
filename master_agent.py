@@ -7,9 +7,8 @@ from urllib.parse import urljoin
 from linkedin_scraper import BrowserManager, CompanyScraper, wait_for_manual_login
 from app.database import SessionLocal
 from app.models import Lead
-from app.embedding import generate_embedding
 
-# --- 1. AUTH & SESSION (SAME AS BEFORE) ---
+# --- 1. AUTH & SESSION ---
 async def ensure_session():
     if os.path.exists("session.json"): return True
     async with BrowserManager(headless=False) as browser:
@@ -22,13 +21,28 @@ async def ensure_session():
 async def find_email_on_website(page, website_url):
     if not website_url or "linkedin.com" in website_url or website_url == "None":
         return "discovery@pending.com"
-    try:
-        await page.goto(website_url, timeout=15000, wait_until="load")
-        content = await page.content()
-        emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', content)
-        valid = [e for e in set(emails) if not any(x in e.lower() for x in [".png", ".jpg", "sentry", "example"])]
-        return valid[0] if valid else "not_found@company.com"
-    except: return "discovery@pending.com"
+        
+    paths_to_check = ['', '/contact', '/contact-us', '/about', '/about-us']
+    
+    for path in paths_to_check:
+        try:
+            target_url = urljoin(website_url, path)
+            # wait_until="domcontentloaded" is faster than "load"
+            await page.goto(target_url, timeout=10000, wait_until="domcontentloaded")
+            content = await page.content()
+            
+            emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', content)
+            
+            # Filter out images and dummy emails
+            invalid_strings = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", "sentry", "example", "wixpress"]
+            valid = [e for e in set(emails) if not any(x in e.lower() for x in invalid_strings)]
+            
+            if valid:
+                return valid[0]  # Return the first real email found
+        except Exception:
+            continue # If page doesn't exist, skip to the next path
+            
+    return "not_found@company.com"
 
 # --- 3. THE SMART PROCESSOR (WITH AUTO-CSV) ---
 async def process_company(browser_context, url):
@@ -71,13 +85,12 @@ async def process_company(browser_context, url):
         email = await find_email_on_website(page, official_site)
         
         # SAVE TO DB
-        vector = generate_embedding(f"Bio: {bio}")
         new_lead = Lead(
             company_name=company_name,
             company_description=bio,
             website_url=url, # Use LinkedIn URL as the unique ID
-            description_embedding=vector,
-            contact_email=email
+            contact_email=email,
+            is_pitched=False
         )
         db.add(new_lead)
         db.commit()
@@ -98,26 +111,36 @@ async def process_company(browser_context, url):
     finally:
         await page.close()
         db.close()
-
-# --- 4. HARVESTER (WITH AUTO-SCROLL) ---
+        
+# --- 4. HARVESTER (WITH PAGINATION) ---
 async def harvest_urls(browser, query):
     print(f"🔍 Searching: {query}")
-    await browser.page.goto(f"https://www.linkedin.com/search/results/companies/?keywords={query}")
-    await asyncio.sleep(4)
+    all_urls = []
     
-    # Scroll deeper to find more than just the first 3
-    for _ in range(3):
-        await browser.page.mouse.wheel(0, 1000)
-        await asyncio.sleep(1.5)
-    
-    links = await browser.page.locator("a[href*='/company/']").all()
-    urls = []
-    for link in links:
-        href = await link.get_attribute("href")
-        if href and "/company/" in href and "search" not in href:
-            urls.append(href.split('?')[0].rstrip('/'))
-    return list(set(urls))
-
+    # Loop through the first 5 pages of LinkedIn search results
+    for page_num in range(1, 6):
+        print(f"📄 Scanning Search Page {page_num}...")
+        await browser.page.goto(f"https://www.linkedin.com/search/results/companies/?keywords={query}&page={page_num}")
+        await asyncio.sleep(4)
+        
+        # Scroll deeper to load all items on this page
+        for _ in range(3):
+            await browser.page.mouse.wheel(0, 1000)
+            await asyncio.sleep(1.5)
+        
+        links = await browser.page.locator("a[href*='/company/']").all()
+        page_urls = []
+        for link in links:
+            href = await link.get_attribute("href")
+            if href and "/company/" in href and "search" not in href:
+                page_urls.append(href.split('?')[0].rstrip('/'))
+                
+        if not page_urls:
+            break # Stop if we hit a page with no results
+            
+        all_urls.extend(page_urls)
+        
+    return list(set(all_urls))
 # --- 5. MASTER RUNNER ---
 async def start_engine():
     print("\n🚀 MASTER RUNNER: DE-DUPLICATION MODE")

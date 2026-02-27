@@ -4,16 +4,14 @@ from app.database import Base
 
 class Service(Base):
     __tablename__ = "services"
-
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
     description = Column(Text)
-    # Dimension 384 matches the 'all-MiniLM-L6-v2' model used in embedding.py
+    # Using 384 dimensions to match 'all-MiniLM-L6-v2'
     embedding = Column(Vector(384)) 
 
 class Lead(Base):
     __tablename__ = "leads"
-
     id = Column(Integer, primary_key=True, index=True)
     company_name = Column(String)
     company_description = Column(Text)
@@ -23,10 +21,9 @@ class Lead(Base):
 
 class Outreach(Base):
     __tablename__ = "outreach"
-
     id = Column(Integer, primary_key=True, index=True)
     company_name = Column(String)
-    service_name = Column(String) # Ensure this matches agent.py save_outreach
+    service_name = Column(String)
     email_content = Column(Text)
     followup_content = Column(Text, nullable=True)
     status = Column(String, default="draft")
