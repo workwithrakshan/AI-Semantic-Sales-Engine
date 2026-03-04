@@ -27,3 +27,4 @@ class Outreach(Base):
     email_content = Column(Text)
     followup_content = Column(Text, nullable=True)
     status = Column(String, default="draft")
+    contact_email = Column(String)
