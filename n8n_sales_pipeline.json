@@ -1,0 +1,440 @@
+{
+  "name": "🚀 Sales Outreach Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Sales Outreach Pipeline",
+        "formDescription": "Enter a target industry to begin the full automated pipeline",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Target Industry",
+              "fieldType": "text",
+              "placeholder": "e.g. IT consulting India",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Your Name",
+              "fieldType": "text",
+              "placeholder": "e.g. Rahul Sharma",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "From Email",
+              "fieldType": "text",
+              "placeholder": "your@company.com",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "responseText": "✅ Pipeline complete! Check your email for the summary report."
+      },
+      "id": "node_form_trigger",
+      "name": "🎯 Start: Enter Industry",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "sales-pipeline-trigger"
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Store form inputs in workflow data\nconst industry = $input.first().json['Target Industry'];\nconst fromName = $input.first().json['Your Name'];\nconst fromEmail = $input.first().json['From Email'];\n\nreturn [{\n  json: {\n    industry,\n    fromName,\n    fromEmail,\n    pipelineStarted: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "node_set_vars",
+      "name": "📦 Set Variables",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/stage1/scrape",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "industry",
+              "value": "={{ $json.industry }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node_scrape_start",
+      "name": "🔍 Stage 1: Start LinkedIn Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 400]
+    },
+
+    {
+      "parameters": {
+        "amount": 15,
+        "unit": "seconds"
+      },
+      "id": "node_wait_scrape_1",
+      "name": "⏳ Wait 15s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "webhookId": "wait-scrape-1"
+    },
+
+    {
+      "parameters": {
+        "url": "http://localhost:8001/stage1/status",
+        "options": {}
+      },
+      "id": "node_poll_scrape",
+      "name": "📡 Poll: Scrape Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 400]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "scrape_done_check",
+              "leftValue": "={{ $json.running }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node_scrape_done_check",
+      "name": "✅ Scrape Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "node_wait_scrape_retry",
+      "name": "⏳ Wait 30s (retry)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1340, 580],
+      "webhookId": "wait-scrape-retry"
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/stage2/enrich",
+        "options": {}
+      },
+      "id": "node_enrich_start",
+      "name": "📧 Stage 2: Start Email Enrichment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1560, 400]
+    },
+
+    {
+      "parameters": {
+        "amount": 20,
+        "unit": "seconds"
+      },
+      "id": "node_wait_enrich",
+      "name": "⏳ Wait 20s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1780, 400],
+      "webhookId": "wait-enrich"
+    },
+
+    {
+      "parameters": {
+        "url": "http://localhost:8001/stage2/status",
+        "options": {}
+      },
+      "id": "node_poll_enrich",
+      "name": "📡 Poll: Enrich Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2000, 400]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "enrich_done_check",
+              "leftValue": "={{ $json.running }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "node_enrich_done_check",
+      "name": "✅ Enrich Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 400]
+    },
+
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "node_wait_enrich_retry",
+      "name": "⏳ Wait 30s (retry)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [2220, 580],
+      "webhookId": "wait-enrich-retry"
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/stage3/generate",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "node_generate_emails",
+      "name": "🤖 Stage 3: Generate AI Emails",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2440, 400]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// Extract the drafts array from the response\nconst drafts = $input.first().json.drafts || [];\nconst generated = $input.first().json.generated || 0;\n\nconsole.log(`Generated ${generated} email drafts`);\n\nif (drafts.length === 0) {\n  return [{ json: { skip: true, message: 'No drafts generated' } }];\n}\n\n// Return each draft as a separate item for the loop below\nreturn drafts.map(draft => ({ json: draft }));"
+      },
+      "id": "node_split_drafts",
+      "name": "✂️ Split Drafts for Loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 400]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "has_email",
+              "leftValue": "={{ $json.to_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "node_has_email_check",
+      "name": "📬 Has Valid Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2880, 400]
+    },
+
+    {
+      "parameters": {
+        "fromEmail": "={{ $('📦 Set Variables').first().json.fromEmail }}",
+        "toEmail": "={{ $json.to_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "node_send_email",
+      "name": "📤 Stage 4: Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [3100, 320],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Account"
+        }
+      }
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/stage4/mark-sent",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "outreach_id",
+              "value": "={{ $json.outreach_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node_mark_sent",
+      "name": "✅ Mark as Sent in DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3320, 320]
+    },
+
+    {
+      "parameters": {
+        "url": "http://localhost:8001/dashboard",
+        "options": {}
+      },
+      "id": "node_get_stats",
+      "name": "📊 Get Final Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3540, 400]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "const stats = $input.first().json;\nconst industry = $('📦 Set Variables').first().json.industry;\nconst fromName = $('📦 Set Variables').first().json.fromName;\n\nconst report = `\n🚀 SALES PIPELINE COMPLETE\n${'='.repeat(40)}\n\n📋 Industry Targeted: ${industry}\n⏰ Completed: ${new Date().toLocaleString()}\n\n📊 RESULTS:\n   Total Leads Found:     ${stats.total_leads}\n   Reachable (Has Email): ${stats.reachable}\n   Unreachable:           ${stats.unreachable}\n   Emails Drafted & Sent: ${stats.drafted}\n   Remaining:             ${stats.remaining}\n\n✅ Pipeline run by: ${fromName}\n${'='.repeat(40)}\n`;\n\nconsole.log(report);\n\nreturn [{ json: { report, stats, industry, fromName } }];"
+      },
+      "id": "node_build_report",
+      "name": "📝 Build Summary Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3760, 400]
+    },
+
+    {
+      "parameters": {
+        "fromEmail": "={{ $('📦 Set Variables').first().json.fromEmail }}",
+        "toEmail": "={{ $('📦 Set Variables').first().json.fromEmail }}",
+        "subject": "=✅ Pipeline Done — {{ $json.stats.drafted }} emails sent for {{ $json.industry }}",
+        "emailType": "text",
+        "message": "={{ $json.report }}",
+        "options": {}
+      },
+      "id": "node_summary_email",
+      "name": "📨 Send Summary to Yourself",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [3980, 400],
+      "credentials": {
+        "smtp": {
+          "id": "SMTP_CREDENTIAL_ID",
+          "name": "SMTP Account"
+        }
+      }
+    }
+  ],
+
+  "connections": {
+    "🎯 Start: Enter Industry": {
+      "main": [[{ "node": "📦 Set Variables", "type": "main", "index": 0 }]]
+    },
+    "📦 Set Variables": {
+      "main": [[{ "node": "🔍 Stage 1: Start LinkedIn Scrape", "type": "main", "index": 0 }]]
+    },
+    "🔍 Stage 1: Start LinkedIn Scrape": {
+      "main": [[{ "node": "⏳ Wait 15s", "type": "main", "index": 0 }]]
+    },
+    "⏳ Wait 15s": {
+      "main": [[{ "node": "📡 Poll: Scrape Status", "type": "main", "index": 0 }]]
+    },
+    "📡 Poll: Scrape Status": {
+      "main": [[{ "node": "✅ Scrape Done?", "type": "main", "index": 0 }]]
+    },
+    "✅ Scrape Done?": {
+      "main": [
+        [{ "node": "📧 Stage 2: Start Email Enrichment", "type": "main", "index": 0 }],
+        [{ "node": "⏳ Wait 30s (retry)", "type": "main", "index": 0 }]
+      ]
+    },
+    "⏳ Wait 30s (retry)": {
+      "main": [[{ "node": "📡 Poll: Scrape Status", "type": "main", "index": 0 }]]
+    },
+    "📧 Stage 2: Start Email Enrichment": {
+      "main": [[{ "node": "⏳ Wait 20s", "type": "main", "index": 0 }]]
+    },
+    "⏳ Wait 20s": {
+      "main": [[{ "node": "📡 Poll: Enrich Status", "type": "main", "index": 0 }]]
+    },
+    "📡 Poll: Enrich Status": {
+      "main": [[{ "node": "✅ Enrich Done?", "type": "main", "index": 0 }]]
+    },
+    "✅ Enrich Done?": {
+      "main": [
+        [{ "node": "🤖 Stage 3: Generate AI Emails", "type": "main", "index": 0 }],
+        [{ "node": "⏳ Wait 30s (retry)_enrich", "type": "main", "index": 0 }]
+      ]
+    },
+    "⏳ Wait 30s (retry)_enrich": {
+      "main": [[{ "node": "📡 Poll: Enrich Status", "type": "main", "index": 0 }]]
+    },
+    "🤖 Stage 3: Generate AI Emails": {
+      "main": [[{ "node": "✂️ Split Drafts for Loop", "type": "main", "index": 0 }]]
+    },
+    "✂️ Split Drafts for Loop": {
+      "main": [[{ "node": "📬 Has Valid Email?", "type": "main", "index": 0 }]]
+    },
+    "📬 Has Valid Email?": {
+      "main": [
+        [{ "node": "📤 Stage 4: Send Email", "type": "main", "index": 0 }],
+        [{ "node": "📊 Get Final Stats", "type": "main", "index": 0 }]
+      ]
+    },
+    "📤 Stage 4: Send Email": {
+      "main": [[{ "node": "✅ Mark as Sent in DB", "type": "main", "index": 0 }]]
+    },
+    "✅ Mark as Sent in DB": {
+      "main": [[{ "node": "📊 Get Final Stats", "type": "main", "index": 0 }]]
+    },
+    "📊 Get Final Stats": {
+      "main": [[{ "node": "📝 Build Summary Report", "type": "main", "index": 0 }]]
+    },
+    "📝 Build Summary Report": {
+      "main": [[{ "node": "📨 Send Summary to Yourself", "type": "main", "index": 0 }]]
+    }
+  },
+
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [],
+  "pinData": {}
+}
