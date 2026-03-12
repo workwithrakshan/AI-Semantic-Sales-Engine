@@ -12,7 +12,7 @@ async def find_email_on_website(page, website_url):
     if not website_url or "linkedin.com" in website_url:
         return "discovery@pending.com"
     try:
-        print(f"   🔎 Crawling official site: {website_url}")
+        print(f"    Crawling official site: {website_url}")
         await page.goto(website_url, timeout=12000, wait_until="domcontentloaded")
         content = await page.content()
         emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', content)
@@ -28,7 +28,7 @@ async def process_company(browser_context, url):
     try:
         # 1. Navigate to LinkedIn About Page
         about_url = f"{url.rstrip('/')}/about/"
-        print(f"🚀 Processing: {about_url}")
+        print(f" Processing: {about_url}")
         await page.goto(about_url, wait_until="domcontentloaded", timeout=15000)
         await asyncio.sleep(3)
 
@@ -63,10 +63,10 @@ async def process_company(browser_context, url):
         )
         db.add(new_lead)
         db.commit()
-        print(f"✅ Success: {company.name} | Site: {official_website} | Email: {found_email}")
+        print(f"Success: {company.name} | Site: {official_website} | Email: {found_email}")
 
     except Exception as e:
-        print(f"⚠️ Failed {url}: {str(e)[:50]}")
+        print(f" Failed {url}: {str(e)[:50]}")
     finally:
         await page.close()
         db.close()
@@ -89,11 +89,11 @@ async def harvest_urls(query):
 
 async def main():
     target = input("Target industry/niche: ")
-    print("📍 Phase 1: Harvesting URLs...")
+    print(" Phase 1: Harvesting URLs...")
     urls = await harvest_urls(target)
     if not urls: return
 
-    print(f"📍 Phase 2: Processing {len(urls)} leads in parallel batches...")
+    print(f" Phase 2: Processing {len(urls)} leads in parallel batches...")
     async with BrowserManager(headless=True) as browser:
         await browser.load_session("session.json")
         batch_size = 3

@@ -9,6 +9,7 @@ from linkedin_scraper import BrowserManager, CompanyScraper, wait_for_manual_log
 from app.database import SessionLocal
 from app.models import Lead, Service, Outreach
 from sqlalchemy.orm import Session
+import sys
 
 # --- API CONFIG ---
 ANYTHING_LLM_URL = "http://192.168.1.38:3001/api/v1/workspace/my-workspace/chat"
@@ -36,7 +37,7 @@ def generate_email(company_name, description, service):
         response = requests.post(ANYTHING_LLM_URL, json=payload, headers=headers, timeout=30)
         return response.json().get("textResponse")
     except Exception as e:
-        print(f"❌ AI Error: {e}")
+        print(f"AI Error: {e}")
         return None
 
 def save_outreach(db: Session, company, service_name, email_content):
@@ -55,7 +56,7 @@ async def find_email_on_website(browser_context, website_url):
     page = await browser_context.new_page()
     found_emails = set()
     try:
-        print(f"    🌐 Background Crawling: {website_url}")
+        print(f"  Background Crawling: {website_url}")
         await page.goto(website_url, timeout=15000, wait_until="load")
         content = await page.content()
         found_emails.update(re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', content))
@@ -87,14 +88,14 @@ async def process_company(browser_context, url):
     # --- DUPLICATE CHECK ---
     existing_lead = db.query(Lead).filter(Lead.website_url == url).first()
     if existing_lead:
-        print(f"⏭️ Skipping {url} - Already in Database.")
+        print(f" Skipping {url} - Already in Database.")
         db.close()
         return
 
     page = await browser_context.new_page()
     try:
         about_url = f"{url.rstrip('/')}/about/"
-        print(f"\n🚀 Scanning LinkedIn: {about_url}")
+        print(f"\n Scanning LinkedIn: {about_url}")
         await page.goto(about_url, timeout=30000)
         
         # --- CLEAN NAME FIX: Target the H1 instead of page.title() ---
@@ -122,7 +123,7 @@ async def process_company(browser_context, url):
         except: pass
 
         email = await find_email_on_website(browser_context, official_site)
-        print(f"📧 Email Found: {email}")
+        print(f" Email Found: {email}")
         
         new_lead = Lead(
             company_name=company_name, 
@@ -133,10 +134,10 @@ async def process_company(browser_context, url):
         )
         db.add(new_lead)
         db.commit()
-        print(f"✅ Full Lead Saved: {company_name}")
+        print(f" Full Lead Saved: {company_name}")
         
     except Exception as e:
-        print(f"⚠️ Error: {e}")
+        print(f" Error: {e}")
     finally:
         await page.close()
         db.close()
@@ -151,8 +152,8 @@ async def ensure_session():
     return True
 
 async def start_engine():
-    print("\n🚀 MASTER RUNNER STARTING (SILENT MODE)...")
-    target = input("🎯 Industry to Scrape: ")
+    print("\n MASTER RUNNER STARTING (SILENT MODE)...")
+    target = sys.argv[1] if len(sys.argv) > 1 else input(" Industry to Scrape: ")
     await ensure_session()
     
     async with BrowserManager(headless=True) as browser:
@@ -161,7 +162,7 @@ async def start_engine():
         all_urls = []
         # --- PAGINATION LOOP: Scrapes first 3 pages ---
         for page_num in range(1, 4):
-            print(f"🔍 Harvesting LinkedIn Page {page_num}...")
+            print(f" Harvesting LinkedIn Page {page_num}...")
             search_url = f"https://www.linkedin.com/search/results/companies/?keywords={target}&page={page_num}"
             await browser.page.goto(search_url)
             await asyncio.sleep(5)
@@ -177,12 +178,12 @@ async def start_engine():
                     all_urls.append(href.split('?')[0].rstrip('/'))
         
         urls = list(set(all_urls))
-        print(f"📈 Found {len(urls)} unique companies across multiple pages.")
+        print(f" Found {len(urls)} unique companies across multiple pages.")
         
         for url in urls:
             await process_company(browser.context, url)
             wait_time = random.randint(10, 20)
-            print(f"💤 Resting for {wait_time}s...")
+            print(f" Resting for {wait_time}s...")
             await asyncio.sleep(wait_time)
 
 if __name__ == "__main__":
