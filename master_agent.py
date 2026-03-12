@@ -11,7 +11,7 @@ from app.models import Lead, Service, Outreach
 from sqlalchemy.orm import Session
 
 # --- API CONFIG ---
-ANYTHING_LLM_URL = "http://localhost:3001/api/v1/workspace/ai-sales-agent/chat"
+ANYTHING_LLM_URL = "http://192.168.1.38:3001/api/v1/workspace/my-workspace/chat"
 API_KEY = "S0V7871-M5F4690-G0S5V7N-98W3H6S"
 
 # --- PART 1: LOGIC FUNCTIONS (For main.py) ---
