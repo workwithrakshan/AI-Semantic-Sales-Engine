@@ -29,21 +29,21 @@ def show_dashboard():
     print("       SALES ENGINE REAL-TIME STATS")
     print("═"*42)
     
-    print(f"📁 Total Leads Harvested:   {total_leads}")
-    print(f"📧 Leads with Emails:       {with_email} (Ready)")
-    print(f"❓ Missing Emails:         {missing_email} (Need manual search)")
+    print(f" Total Leads Harvested:   {total_leads}")
+    print(f" Leads with Emails:       {with_email} (Ready)")
+    print(f" Missing Emails:         {missing_email} (Need manual search)")
     
     print("-" * 42)
     
-    print(f"✅ AI Drafts Completed:     {drafted}")
-    print(f"⏳ Remaining to Draft:      {remaining}")
+    print(f" AI Drafts Completed:     {drafted}")
+    print(f"Remaining to Draft:      {remaining}")
     
     print("═"*42)
     
     if remaining > 0:
-        print(f"💡 Action: Run 'python app/agent.py' to process the next {remaining} leads.")
+        print(f" Action: Run 'python app/agent.py' to process the next {remaining} leads.")
     else:
-        print("💡 Action: Run 'python master_agent.py' to find new target companies.")
+        print(" Action: Run 'python master_agent.py' to find new target companies.")
     print("\n")
 
     db.close()
