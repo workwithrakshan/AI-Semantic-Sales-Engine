@@ -10,7 +10,7 @@ load_dotenv()
 # Using 127.0.0.1 is usually more stable than the local IP unless you are calling from a different machine
 ANYTHING_LLM_BASE_URL = "http://192.168.1.38:3001"
 ANYTHING_LLM_API_KEY = "21Y0K2Q-DEDM82D-GRBGH34-W8GGAQX"
-
+#Change the above API key to your actual AnythingLLM API key or anything according to what u do / env file is just to view 
 def call_local_llm(prompt: str, company_name: str) -> str:
     # Use the Developer API endpoint - most robust for automation
     url = f"{ANYTHING_LLM_BASE_URL}/api/v1/workspace/my-workspace/chat"
