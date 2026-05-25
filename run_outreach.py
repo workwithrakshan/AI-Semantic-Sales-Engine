@@ -11,7 +11,7 @@ from app.agent import generate_email
 def run_outreach_generation():
     """Generate professional emails for all leads with valid email addresses."""
     print("\n" + "="*70)
-    print("🚀 AI OUTREACH GENERATION ENGINE")
+    print(" AI OUTREACH GENERATION ENGINE")
     print("="*70 + "\n")
     
     db = SessionLocal()
